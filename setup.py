@@ -5,6 +5,8 @@
 #         http://binux.me
 # Created on 2014-11-24 22:27:45
 
+
+import sys
 from setuptools import setup, find_packages
 from codecs import open
 from os import path
@@ -13,8 +15,67 @@ here = path.abspath(path.dirname(__file__))
 with open(path.join(here, 'README.md'), encoding='utf-8') as f:
     long_description = f.read()
 
-
 import pyspider
+
+install_requires = [
+    'Flask>=0.10',
+    'Jinja2>=2.7',
+    'chardet>=2.2',
+    'cssselect>=0.9',
+    'lxml',
+    'pycurl',
+    'pyquery',
+    'requests>=2.2',
+    'tornado>=3.2',
+    'Flask-Login>=0.2.11',
+    'u-msgpack-python>=1.6',
+    'click>=3.3',
+    'six>=1.5.0',
+    'tblib>=1.3.0'
+]
+
+if sys.version_info < (2, 7):  # 2.6
+    install_requires.extend([
+        'wsgidav<2.0.0',
+    ])
+elif sys.version_info >= (3, 0):  # 3.*
+    install_requires.extend([
+        'wsgidav>=2.0.0',
+    ])
+else:  # 2.7
+    install_requires.extend([
+        'wsgidav',
+    ])
+
+extras_require_all = [
+    'mysql-connector-python>=1.2.2',
+    'pymongo>=2.7.2',
+    'SQLAlchemy>=0.9.7',
+    'redis',
+    'psycopg2',
+    'elasticsearch>=2.0.0,<2.4.0',
+]
+if sys.version_info < (2, 7):  # 2.6
+    extras_require_all.extend([
+        'kombu<4.0',
+        'amqp>=1.3.0,<2.0',
+        'pika>=0.9.14',
+        'beanstalkc',
+    ])
+elif sys.version_info >= (3, 0):  # 3.*
+    extras_require_all.extend([
+        'kombu',
+        'amqp>=2.1.1'
+    ])
+else:  # 2.7
+    extras_require_all.extend([
+        'kombu',
+        'pika>=0.9.14',
+        'beanstalkc',
+        'amqp>=1.3.0',
+    ])
+
+
 setup(
     name='pyspider',
     version=pyspider.__version__,
@@ -37,6 +98,7 @@ setup(
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.3',
         'Programming Language :: Python :: 3.4',
+        'Programming Language :: Python :: 3.5',
 
         'License :: OSI Approved :: Apache Software License',
 
@@ -53,38 +115,26 @@ setup(
 
     packages=find_packages(exclude=['data', 'tests*']),
 
-    install_requires=[
-        'Flask>=0.10',
-        'Jinja2>=2.7',
-        'chardet>=2.2',
-        'cssselect>=0.9',
-        'lxml',
-        'pycurl',
-        'pyquery',
-        'requests>=2.2',
-        'tornado>=3.2',
-        'Flask-Login>=0.2.11',
-        'u-msgpack-python>=1.6',
-        'click>=3.3',
-        'six',
-    ],
+    install_requires=install_requires,
 
     extras_require={
-        'all': [
-            'mysql-connector-python>=1.2.2',
-            'pika>=0.9.14',
-            'amqp>=1.3.0',
-            'pymongo>=2.7.2',
+        'all': extras_require_all,
+        'test': [
             'unittest2>=0.5.1',
-            'SQLAlchemy>=0.9.7'
-        ],
+            'coverage',
+            'httpbin',
+            'pyproxy>=0.1.6',
+            'easywebdav',
+        ]
     },
 
     package_data={
         'pyspider': [
             'logging.conf',
             'fetcher/phantomjs_fetcher.js',
-            'webui/static/*',
+            'fetcher/splash_fetcher.lua',
+            'webui/static/*.js',
+            'webui/static/*.css',
             'webui/templates/*'
         ],
     },

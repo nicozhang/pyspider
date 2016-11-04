@@ -31,13 +31,19 @@ class TestRun(unittest.TestCase):
 
         import tests.data_test_webpage
         import httpbin
-        self.httpbin_thread = utils.run_in_subprocess(httpbin.app.run, port=14887)
+        self.httpbin_thread = utils.run_in_subprocess(httpbin.app.run, port=14887, passthrough_errors=False)
         self.httpbin = 'http://127.0.0.1:14887'
 
     @classmethod
     def tearDownClass(self):
         self.httpbin_thread.terminate()
         self.httpbin_thread.join()
+
+        assert not utils.check_port_open(5000)
+        assert not utils.check_port_open(23333)
+        assert not utils.check_port_open(24444)
+        assert not utils.check_port_open(25555)
+        assert not utils.check_port_open(14887)
 
         shutil.rmtree('./data/tests', ignore_errors=True)
 
@@ -69,7 +75,7 @@ class TestRun(unittest.TestCase):
         with self.assertRaises(mysql.connector.InterfaceError):
             ctx.obj.taskdb
 
-        with self.assertRaisesRegexp(Exception, 'Connection refused'):
+        with self.assertRaises(Exception):
             ctx.obj.newtask_queue
 
     def test_30_cli_command_line(self):
@@ -97,7 +103,7 @@ class TestRun(unittest.TestCase):
         finally:
             del os.environ['RESULTDB']
 
-    @unittest.skipIf(os.environ.get('IGNORE_RABBITMQ'), 'no rabbitmq server for test.')
+    @unittest.skipIf(os.environ.get('IGNORE_RABBITMQ') or os.environ.get('IGNORE_ALL'), 'no rabbitmq server for test.')
     def test_50_docker_rabbitmq(self):
         try:
             os.environ['RABBITMQ_NAME'] = 'rabbitmq'
@@ -116,7 +122,7 @@ class TestRun(unittest.TestCase):
             del os.environ['RABBITMQ_PORT_5672_TCP_ADDR']
             del os.environ['RABBITMQ_PORT_5672_TCP_PORT']
 
-    @unittest.skipIf(os.environ.get('IGNORE_MONGODB'), 'no mongodb server for test.')
+    @unittest.skipIf(os.environ.get('IGNORE_MONGODB') or os.environ.get('IGNORE_ALL'), 'no mongodb server for test.')
     def test_60_docker_mongodb(self):
         try:
             os.environ['MONGODB_NAME'] = 'mongodb'
@@ -133,7 +139,8 @@ class TestRun(unittest.TestCase):
             del os.environ['MONGODB_PORT_27017_TCP_ADDR']
             del os.environ['MONGODB_PORT_27017_TCP_PORT']
 
-    @unittest.skipIf(os.environ.get('IGNORE_MYSQL'), 'no mysql server for test.')
+    @unittest.skip('noly available in docker')
+    @unittest.skipIf(os.environ.get('IGNORE_MYSQL') or os.environ.get('IGNORE_ALL'), 'no mysql server for test.')
     def test_70_docker_mysql(self):
         try:
             os.environ['MYSQL_NAME'] = 'mysql'
@@ -153,7 +160,7 @@ class TestRun(unittest.TestCase):
     def test_80_docker_phantomjs(self):
         try:
             os.environ['PHANTOMJS_NAME'] = 'phantomjs'
-            os.environ['PHANTOMJS_PORT'] = 'tpc://binux:25678'
+            os.environ['PHANTOMJS_PORT_25555_TCP'] = 'tpc://binux:25678'
             ctx = run.cli.make_context('test', [], None,
                                        obj=dict(testing_mode=True))
             ctx = run.cli.invoke(ctx)
@@ -162,7 +169,7 @@ class TestRun(unittest.TestCase):
             self.assertIsNone(e)
         finally:
             del os.environ['PHANTOMJS_NAME']
-            del os.environ['PHANTOMJS_PORT']
+            del os.environ['PHANTOMJS_PORT_25555_TCP']
 
     def test_90_docker_scheduler(self):
         try:
@@ -192,7 +199,7 @@ class TestRun(unittest.TestCase):
             '--resultdb', 'sqlite+resultdb:///data/tests/all_test_result.db',
             '--projectdb', 'local+projectdb://'+inspect.getsourcefile(data_sample_handler),
             'all',
-        ], close_fds=True)
+        ], close_fds=True, preexec_fn=os.setsid)
 
 
         try:
@@ -210,11 +217,11 @@ class TestRun(unittest.TestCase):
                 break
 
             limit = 30
-            data = requests.get('http://localhost:5000/counter?time=5m&type=sum')
+            data = requests.get('http://localhost:5000/counter')
             self.assertEqual(data.status_code, 200)
-            while data.json().get('data_sample_handler', {}).get('success', 0) < 5:
+            while data.json().get('data_sample_handler', {}).get('5m', {}).get('success', 0) < 5:
                 time.sleep(1)
-                data = requests.get('http://localhost:5000/counter?time=5m&type=sum')
+                data = requests.get('http://localhost:5000/counter')
                 limit -= 1
                 if limit <= 0:
                     break
@@ -226,10 +233,9 @@ class TestRun(unittest.TestCase):
         except:
             raise
         finally:
-            while p.returncode is None:
-                time.sleep(1)
-                p.send_signal(signal.SIGINT)
-                p.poll()
+            time.sleep(1)
+            os.killpg(p.pid, signal.SIGTERM)
+            p.wait()
 
     def test_a110_one(self):
         pid, fd = os.forkpty()
@@ -310,8 +316,8 @@ class TestSendMessage(unittest.TestCase):
 
         ctx = run.scheduler.make_context('scheduler', [], self.ctx)
         scheduler = run.scheduler.invoke(ctx)
-        utils.run_in_thread(scheduler.xmlrpc_run)
-        utils.run_in_thread(scheduler.run)
+        self.xmlrpc_thread = utils.run_in_thread(scheduler.xmlrpc_run)
+        self.scheduler_thread = utils.run_in_thread(scheduler.run)
 
         time.sleep(1)
 
@@ -319,7 +325,14 @@ class TestSendMessage(unittest.TestCase):
     def tearDownClass(self):
         for each in self.ctx.obj.instances:
             each.quit()
+        self.xmlrpc_thread.join()
+        self.scheduler_thread.join()
         time.sleep(1)
+
+        assert not utils.check_port_open(5000)
+        assert not utils.check_port_open(23333)
+        assert not utils.check_port_open(24444)
+        assert not utils.check_port_open(25555)
 
         shutil.rmtree('./data/tests', ignore_errors=True)
 

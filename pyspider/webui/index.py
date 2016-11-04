@@ -7,6 +7,7 @@
 
 import socket
 
+from six import iteritems, itervalues
 from flask import render_template, request, json
 from flask.ext import login
 from .app import app
@@ -17,7 +18,26 @@ index_fields = ['name', 'group', 'status', 'comments', 'rate', 'burst', 'updatet
 @app.route('/')
 def index():
     projectdb = app.config['projectdb']
-    return render_template("index.html", projects=projectdb.get_all(fields=index_fields))
+    projects = sorted(projectdb.get_all(fields=index_fields),
+                      key=lambda k: (0 if k['group'] else 1, k['group'] or '', k['name']))
+    return render_template("index.html", projects=projects)
+
+
+@app.route('/queues')
+def get_queues():
+    def try_get_qsize(queue):
+        if queue is None:
+            return 'None'
+        try:
+            return queue.qsize()
+        except Exception as e:
+            return "%r" % e
+
+    result = {}
+    queues = app.config.get('queues', {})
+    for key in queues:
+        result[key] = try_get_qsize(queues[key])
+    return json.dumps(result), 200, {'Content-Type': 'application/json'}
 
 
 @app.route('/update', methods=['POST', ])
@@ -71,14 +91,19 @@ def counter():
     if rpc is None:
         return json.dumps({})
 
-    time = request.args['time']
-    type = request.args.get('type', 'sum')
-
+    result = {}
     try:
-        return json.dumps(rpc.counter(time, type)), 200, {'Content-Type': 'application/json'}
+        data = rpc.webui_update()
+        for type, counters in iteritems(data['counter']):
+            for project, counter in iteritems(counters):
+                result.setdefault(project, {})[type] = counter
+        for project, paused in iteritems(data['pause_status']):
+            result.setdefault(project, {})['paused'] = paused
     except socket.error as e:
         app.logger.warning('connect to scheduler rpc error: %r', e)
         return json.dumps({}), 200, {'Content-Type': 'application/json'}
+
+    return json.dumps(result), 200, {'Content-Type': 'application/json'}
 
 
 @app.route('/run', methods=['POST', ])

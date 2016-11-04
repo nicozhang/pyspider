@@ -7,11 +7,29 @@
 
 import base64
 from flask import Response
-from flask.ext import login
+try:
+    import flask_login as login
+except ImportError:
+    from flask.ext import login
 from .app import app
 
 login_manager = login.LoginManager()
 login_manager.init_app(app)
+
+
+class AnonymousUser(login.AnonymousUserMixin):
+
+    def is_anonymous(self):
+        return True
+
+    def is_active(self):
+        return False
+
+    def is_authenticated(self):
+        return False
+
+    def get_id(self):
+        return
 
 
 class User(login.UserMixin):
@@ -32,11 +50,14 @@ class User(login.UserMixin):
         return self.is_authenticated()
 
 
+login_manager.anonymous_user = AnonymousUser
+
+
 @login_manager.request_loader
 def load_user_from_request(request):
     api_key = request.headers.get('Authorization')
     if api_key:
-        api_key = api_key.replace('Basic ', '', 1)
+        api_key = api_key[len("Basic "):]
         try:
             api_key = base64.b64decode(api_key).decode('utf8')
             return User(*api_key.split(":", 1))

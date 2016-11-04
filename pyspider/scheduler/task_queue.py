@@ -9,12 +9,13 @@ import time
 import heapq
 import logging
 import threading
-from six.moves import queue as Queue
 try:
     from UserDict import DictMixin
 except ImportError:
     from collections import Mapping as DictMixin
 from .token_bucket import Bucket
+from six.moves import queue as Queue
+
 logger = logging.getLogger('scheduler')
 
 try:
@@ -135,7 +136,7 @@ class TaskQueue(object):
 
     @property
     def burst(self):
-        return self.burst.burst
+        return self.bucket.burst
 
     @burst.setter
     def burst(self, value):
@@ -153,7 +154,7 @@ class TaskQueue(object):
     def _check_time_queue(self):
         now = time.time()
         self.mutex.acquire()
-        while self.time_queue.qsize() and self.time_queue.top.exetime < now:
+        while self.time_queue.qsize() and self.time_queue.top and self.time_queue.top.exetime < now:
             task = self.time_queue.get_nowait()
             task.exetime = 0
             self.priority_queue.put(task)
@@ -162,13 +163,13 @@ class TaskQueue(object):
     def _check_processing(self):
         now = time.time()
         self.mutex.acquire()
-        while self.processing.qsize() and self.processing.top.exetime < now:
+        while self.processing.qsize() and self.processing.top and self.processing.top.exetime < now:
             task = self.processing.get_nowait()
             if task.taskid is None:
                 continue
             task.exetime = 0
             self.priority_queue.put(task)
-            logger.info("[processing: retry] %s" % task.taskid)
+            logger.info("processing: retry %s", task.taskid)
         self.mutex.release()
 
     def put(self, taskid, priority=0, exetime=0):
@@ -211,12 +212,36 @@ class TaskQueue(object):
     def done(self, taskid):
         '''Mark task done'''
         if taskid in self.processing:
-            del self.processing[taskid]
+            self.mutex.acquire()
+            if taskid in self.processing:
+                del self.processing[taskid]
+            self.mutex.release()
             return True
         return False
 
+    def delete(self, taskid):
+        if taskid not in self:
+            return False
+        if taskid in self.priority_queue:
+            self.mutex.acquire()
+            del self.priority_queue[taskid]
+            self.mutex.release()
+        elif taskid in self.time_queue:
+            self.mutex.acquire()
+            del self.time_queue[taskid]
+            self.mutex.release()
+        elif taskid in self.processing:
+            self.done(taskid)
+        return True
+
     def size(self):
         return self.priority_queue.qsize() + self.time_queue.qsize() + self.processing.qsize()
+
+    def is_processing(self, taskid):
+        '''
+        return True if taskid is in processing
+        '''
+        return taskid in self.processing and self.processing[taskid].taskid
 
     def __len__(self):
         return self.size()

@@ -12,9 +12,9 @@ import logging.config
 logging.config.fileConfig("pyspider/logging.conf")
 
 import shutil
-from multiprocessing import Queue
 from pyspider.database.sqlite import resultdb
 from pyspider.result.result_worker import ResultWorker
+from pyspider.libs.multiprocessing_queue import Queue
 from pyspider.libs.utils import run_in_thread
 
 
@@ -47,6 +47,12 @@ class TestProcessor(unittest.TestCase):
 
     def test_10_bad_result(self):
         self.inqueue.put(({'project': 'test_project'}, {}))
+        self.resultdb._list_project()
+        self.assertEqual(len(self.resultdb.projects), 0)
+        self.assertEqual(self.resultdb.count('test_project'), 0)
+
+    def test_10_bad_result_2(self):
+        self.inqueue.put(({'project': 'test_project'}, {'a': 'b'}))
         self.resultdb._list_project()
         self.assertEqual(len(self.resultdb.projects), 0)
         self.assertEqual(self.resultdb.count('test_project'), 0)
